@@ -1,0 +1,235 @@
+//+------------------------------------------------------------------+
+//|                                        M15.LAWDS-SCALPER V+2.mq4 |
+//|                                  Copyright 2024, MetaQuotes Ltd. |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2024, MetaQuotes Ltd."
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+#property strict
+
+//--- Input parameters
+input int      EMA_Period = 200;      // EMA period
+input int      GChannel_Length = 5;   // G-Channel Length
+input int      ATR_Period = 14;       // ATR period
+input int      NumberOfTrades = 3;    // Maximum number of trades at a time
+input double   Lot_Size = 0.01;       // Lot size for trades
+input double   Take_Profit = 3000.0;  // Take Profit in points
+input double   Stop_Loss = 3000.0;    // Stop Loss in points
+input string   OrderComment = "M15.LAWDS-SCALPER V+2EA";  // Order comment for trade identification
+
+//--- Global variables
+double a[], b[], avg[];               // Arrays for G-Channel values
+double ema, atr;                      // EMA and ATR values
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//-------------------License Code Start----------------------//
+
+#import "MetatraderValidation.ex4"
+bool Validate(string Serialkey,string productCode);
+void updateConnectionStatus(string);
+void updateHardwareId(string);
+void updateConnectionStatusConnected(string);
+void updateConnectionStatusDisconnected(string);
+
+#import
+bool auth = false;
+
+input string strMA1="---------------------------------------- License Input ----------------------------------------";//<<<<<<<< License Input >>>>>>>>
+
+input string serialkey = ""; //Serial Keys
+string ProductCode="M15.LAWDS-SCALPERV+2EA Original Copy";//Product Code
+//----------------License Code End--------------------------//
+
+
+int OnInit()
+
+{   
+    //-------------------License Code Start----------------------//
+
+if(IsDllsAllowed()==false) 
+    { 
+     Alert("DLL call is not allowed. Experts cannot run.");
+    } 
+   if(MQLInfoInteger(MQL_OPTIMIZATION) == 0)
+     {
+      updateHardwareId(serialkey);
+      auth = Validate(serialkey,ProductCode);
+      if(auth == true)
+        {
+         Comment("Active");
+         updateConnectionStatusConnected(serialkey);
+        }
+      if(auth == false)
+        {
+         Comment("Inactive. Contact Provider to Activate");
+         ExpertRemove();
+        }
+     }
+
+//----------------License Code End--------------------------//
+    // Set chart background color to Lime
+    ChartSetInteger(0, CHART_COLOR_BACKGROUND, clrLime);
+    
+    // Set bar colors
+    ChartSetInteger(0, CHART_COLOR_CANDLE_BULL, clrDodgerBlue);  // Bull candle color (Up candle)
+    ChartSetInteger(0, CHART_COLOR_CANDLE_BEAR, clrDodgerBlue);  // Bear candle color (Down candle)
+    ChartSetInteger(0, CHART_COLOR_CHART_UP, clrDodgerBlue);     // Bar Up color
+    ChartSetInteger(0, CHART_COLOR_CHART_DOWN, clrDodgerBlue);   // Bar Down color
+
+    // Remove the grid when EA is attached
+    ChartSetInteger(0, CHART_SHOW_GRID, 0);  // Set to 0 to hide the grid
+
+    // Create timer for periodic execution every 60 seconds
+    EventSetTimer(60);
+
+    // Initialize G-Channel arrays
+    ArrayResize(a, GChannel_Length);
+    ArrayResize(b, GChannel_Length);
+    ArrayResize(avg, GChannel_Length);
+    ArraySetAsSeries(a, true);
+    ArraySetAsSeries(b, true);
+    ArraySetAsSeries(avg, true);
+
+    // Initialization done successfully
+    return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{   
+    //-------------------License Code Start----------------------//
+
+ if(MQLInfoInteger(MQL_OPTIMIZATION) == 0)
+     {
+      updateConnectionStatusDisconnected(serialkey);
+     }
+
+//----------------License Code End--------------------------//
+    // Destroy the timer when expert is removed or stops
+    EventKillTimer();
+    // Remove any objects created
+    ObjectDelete("M15.LAWDS-SCALPER");
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{   
+    //-------------------License Code Start----------------------//
+
+ if(MQLInfoInteger(MQL_OPTIMIZATION) == 0 && MQLInfoInteger(MQL_TESTER) == 0)
+     {
+      auth = Validate(serialkey,ProductCode);
+      if(auth == true)
+        {
+         Comment("Active");
+        }
+      if(auth == false)
+        {
+         Comment("Inactive. Contact Provider to Activate");
+         return ;
+        }
+     }
+//----------------License Code End--------------------------//
+    // Ensure we have enough bars to calculate (avoid accessing invalid data)
+    if (Bars < GChannel_Length || Bars < EMA_Period || Bars < ATR_Period) return;
+
+    ema = iMA(NULL, 0, EMA_Period, 0, MODE_EMA, PRICE_CLOSE, 0);  // Calculate EMA
+    atr = iATR(NULL, 0, ATR_Period, 0);                           // Calculate ATR
+
+    // G-Channel calculation for the current bar
+    for (int i = 0; i < GChannel_Length; i++) {
+        a[i] = GChannelA(GChannel_Length, Close, i);  // Upper channel
+        b[i] = GChannelB(GChannel_Length, Close, i);  // Lower channel
+    }
+    avg[0] = GChannelAvg(0);
+
+    // Check if the maximum number of trades is reached
+    if (GetOpenTradesCount() >= NumberOfTrades) return;
+
+    // Example for placing a buy order
+    if (Close[1] > ema && Close[1] > avg[0]) {  // Buy condition
+        double ask = MarketInfo(Symbol(), MODE_ASK);
+        double sl = NormalizeDouble(ask - Stop_Loss * Point, Digits);
+        double tp = NormalizeDouble(ask + Take_Profit * Point, Digits);
+        int ticket = OrderSend(Symbol(), OP_BUY, Lot_Size, ask, 3, sl, tp, OrderComment, 0, 0, clrGreen);
+        if (ticket < 0) {
+            Print("Error opening buy order: ", GetLastError());
+        }
+    }
+
+    // Example for placing a sell order
+    if (Close[1] < ema && Close[1] < avg[0]) {  // Sell condition
+        double bid = MarketInfo(Symbol(), MODE_BID);
+        double sl = NormalizeDouble(bid + Stop_Loss * Point, Digits);
+        double tp = NormalizeDouble(bid - Take_Profit * Point, Digits);
+        int ticket = OrderSend(Symbol(), OP_SELL, Lot_Size, bid, 3, sl, tp, OrderComment, 0, 0, clrRed);
+        if (ticket < 0) {
+            Print("Error opening sell order: ", GetLastError());
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Timer function                                                   |
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+    // Timer-based operations
+    OnTick();  // Apply OnTick logic on timer
+}
+
+//+------------------------------------------------------------------+
+//| Get Open Trades Count function                                   |
+//+------------------------------------------------------------------+
+int GetOpenTradesCount()
+{
+    int count = 0;
+    for (int i = 0; i < OrdersTotal(); i++) {
+        if (OrderSelect(i, SELECT_BY_POS) && OrderMagicNumber() == 0) {
+            count++;
+        }
+    }
+    return count;
+}
+
+//+------------------------------------------------------------------+
+//| G-Channel Upper Calculation                                      |
+//+------------------------------------------------------------------+
+double GChannelA(int length, const double &src[], int shift)
+{
+    if (shift >= Bars || shift < 0) return 0.0;
+
+    double prevA = (shift > 0) ? a[shift - 1] : src[shift];
+    double prevB = (shift > 0) ? b[shift - 1] : src[shift];
+
+    return MathMax(src[shift], prevA) - (prevA - prevB) / length;
+}
+
+//+------------------------------------------------------------------+
+//| G-Channel Lower Calculation                                      |
+//+------------------------------------------------------------------+
+double GChannelB(int length, const double &src[], int shift)
+{
+    if (shift >= Bars || shift < 0) return 0.0;
+
+    double prevA = (shift > 0) ? a[shift - 1] : src[shift];
+    double prevB = (shift > 0) ? b[shift - 1] : src[shift];
+
+    return MathMin(src[shift], prevB) + (prevA - prevB) / length;
+}
+
+//+------------------------------------------------------------------+
+//| G-Channel Average Calculation                                    |
+//+------------------------------------------------------------------+
+double GChannelAvg(int shift)
+{
+    if (shift >= Bars || shift < 0) return 0.0;
+    return (a[shift] + b[shift]) / 2;
+}
+
